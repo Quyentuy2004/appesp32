@@ -96,19 +96,18 @@ void ledControl(){
 // Xử lý sự kiện WiFi
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
-        // Sự kiện khi ESP32 đã kết nối với AP thành công (chưa lấy IP)
+ 
         case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-            Serial.println("WiFi connected!");
+            
              wifiMode = 1; 
             break;
 
-        // Sự kiện khi ESP32 bị mất kết nối WiFi
+    
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             
-                // Nếu số lần mất kết nối < 10 lần thì thử kết nối lại Wi-Fi
-                Serial.println("WiFi lost connection.");
+              
                 wifiMode = 2; // Đặt chế độ Wi-Fi về 2 (đang cố gắng reconnect)
-                       // Đợi ngắt kết nối hoàn tất
+
               
                 delay(2000);
             break;
@@ -126,8 +125,8 @@ void setupWifi(){
     Serial.println("Connecting to WiFi...");
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
-    WiFi.setAutoReconnect(true);
-    WiFi.persistent(true);  // lưu config vào flash
+    //WiFi.setAutoReconnect(true);
+   // WiFi.persistent(true);  // lưu config vào flash
     Serial.print("Đang kết nối tới WiFi");
     // Vòng lặp chờ cho đến khi kết nối thành công
        // Vòng lặp chờ đến khi kết nối thành công
@@ -145,8 +144,7 @@ void setupWifi(){
     WiFi.mode(WIFI_AP);
     String ssid_ap = "ESP32" ;
     WiFi.softAP(ssid_ap.c_str());
-    Serial.println("Access Point name: " + ssid_ap);
-    Serial.println("Web server access address: " + WiFi.softAPIP().toString());
+
     wifiMode = 0;
   }
 }
@@ -162,26 +160,19 @@ void setupWebServer(){
         }
        DynamicJsonDocument doc(200);
        for(int i = 0; i < wifi_nets; ++i){
-          Serial.println(WiFi.SSID(i));
+        
           doc.add(WiFi.SSID(i));
         }
        String wifiList = "";
        serializeJson(doc, wifiList);
-       Serial.println("WiFi list: " + wifiList);
+    
        webServer.send(200, "application/json", wifiList);
       });
-
-   // Route "/saveWifi" lưu SSID và mật khẩu vào EEPROM
     webServer.on("/saveWifi", []() {
-      Serial.println(" da vao saveWifi");
       String ssid_temp = webServer.arg("ssid");
       String password_temp = webServer.arg("pass");
        String uid_temp = webServer.arg("uid");
         String name_temp = webServer.arg("name");
-      Serial.println("SSID:"+ssid_temp);
-      Serial.println("PASS:"+password_temp);
-      Serial.println("UID:"+uid_temp);
-      Serial.println("NAME:"+name_temp);
       EEPROM.writeString(0,ssid_temp);
       EEPROM.writeString(32,password_temp);
        EEPROM.writeString(100,uid_temp);
@@ -191,7 +182,7 @@ void setupWebServer(){
     });
 
    webServer.on("/reStart", []{
-       Serial.println(" da vao restart");
+     
     webServer.send(200, "text/plain", "ESP32 is restarting!");
     delay(3000);
     ESP.restart();
@@ -233,16 +224,13 @@ String chuyenDoi (int time){
 void setTimeHis(){
  if (Firebase.ready()&& signupOk){
     if(!Firebase.RTDB.readStream(&fbdo_s2))
-    Serial.printf("stream 2 (Nhiet do dat canh bao) begin error,%s\n\n", fbdo_s2.errorReason().c_str());
     if (fbdo_s2.streamAvailable()){
       if(fbdo_s2.dataType()=="int"){
         timeSetHis=fbdo_s2.intData()*1000;
-        Serial.println("Successfull read from"+fbdo_s2.dataPath()+ timeSetHis+"("+fbdo_s2.dataType()+")");
-     }
-   }
-  }
+       }
+    }
+ }
 }
-
 void getTime(){
  
  retry = 0;
@@ -334,8 +322,7 @@ void hisdatabase(float hum,float temp){
 
   String path = "History/" + String(now);
    if (Firebase.RTDB.setJSON(&fbdo, path.c_str(),&json)) {
-      Serial.print(" - successfully saved to: " + fbdo.dataPath());
-      Serial.println(" (" + fbdo.dataType() + ")");
+      
       
       if (Firebase.RTDB.getInt(&fbdo, "/Count/CountHis")) {
         countHis = fbdo.intData() + 1;
@@ -351,12 +338,12 @@ void hisdatabase(float hum,float temp){
 void getTempWar(){
   if (Firebase.ready()&& signupOk){
     if(!Firebase.RTDB.readStream(&fbdo_s1))
-     Serial.printf("stream 1 (Nhiet do dat canh bao) begin error,%s\n\n", fbdo_s1.errorReason().c_str());
+    
     if (fbdo_s1.streamAvailable()){
       if(fbdo_s1.dataType()=="string"){
         sendDataWarning=0;
         tempSet=fbdo_s1.stringData().toFloat();
-        Serial.println("Successfull read from"+fbdo_s1.dataPath()+ String(tempSet) +"("+fbdo_s1.dataType()+")");
+      
       }
     }
   }
@@ -365,11 +352,11 @@ void getTempWar(){
 void getLine(){
   if (Firebase.ready()&& signupOk){
     if(!Firebase.RTDB.readStream(&fbdo_s3))
-     Serial.printf("stream 3  begin error,%s\n\n", fbdo_s3.errorReason().c_str());
+    
     if (fbdo_s3.streamAvailable()){
       if(fbdo_s3.dataType()=="int"){
         lineSet=fbdo_s3.intData();
-        Serial.println("Successfull read from"+fbdo_s3.dataPath()+ String(lineSet) +"("+fbdo_s3.dataType()+")");
+      
         lineSet*=4;
       }
     }
@@ -395,8 +382,7 @@ void warDatabase(float hum,float temp){
  
   String path = "WarHistory/" + String(now);
   if (Firebase.RTDB.setJSON(&fbdo, path.c_str(),&json)) {
-      Serial.print(" - successfully saved to: " + fbdo.dataPath());
-      Serial.println(" (" + fbdo.dataType() + ")");
+     
       if (Firebase.RTDB.getInt(&fbdo, "/Count/CountWar")) {
         countWar = fbdo.intData() + 1;
         Firebase.RTDB.setInt(&fbdo, "/Count/CountWar", countWar);
@@ -411,18 +397,12 @@ void truyenChinh(float hum,float temp){
   if (Firebase.ready()&& signupOk &&((millis()-sendDataPrevMillis)>5000|| sendDataPrevMillis==0)){
   sendDataPrevMillis=millis();
   if (Firebase.RTDB.setFloat(&fbdo, "Sensor/temp", temp)) {
-      Serial.println();
-      Serial.print(temp);
-      Serial.print(" - successfully saved to: " + fbdo.dataPath());
-      Serial.println(" (" + fbdo.dataType() + ")");
+      
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
     }
     if (Firebase.RTDB.setFloat(&fbdo, "Sensor/hum", hum)) {
-      Serial.println();
-      Serial.print(hum);
-      Serial.print(" - successfully saved to: " + fbdo.dataPath());
-      Serial.println(" (" + fbdo.dataType() + ")");
+     
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
     }
@@ -439,7 +419,7 @@ void setWifi(){
     Serial.printf("%s\n",config.signer.signupError.message.c_str());
   }
   config.token_status_callback= tokenStatusCallback;
-  Firebase.reconnectWiFi(true);
+Firebase.reconnectWiFi(true);
   fbdo.setBSSLBufferSize(4096, 1024);
   Firebase.begin(&config, &auth);
 
@@ -504,10 +484,7 @@ public:
     uid=String(uid_temp);
  name=String(name_temp);
     if(ssid != ""){
-      Serial.println("WiFi name: " + ssid);
-      Serial.println("Password: " + password);
-      Serial.println("uid: " +uid );
-      Serial.println("name: " +name );
+     
     }
     setupWifi(); // Thiết lập WiFi
     if(wifiMode == 0 ) setupWebServer();
