@@ -53,7 +53,9 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 7 * 3600; // GMT+7 cho Việt Nam
 const int   daylightOffset_sec = 0;
 
-
+const char* ntpServer1 = "time.google.com";
+const char* ntpServer2 = "time.cloudflare.com";
+const char* ntpServer3 = "pool.ntp.org";
 
 WebServer webServer(80); // Khởi tạo đối tượng WebServer cổng 80
 
@@ -113,7 +115,7 @@ void WiFiEvent(WiFiEvent_t event) {
             break;
         // Mặc định khi không khớp với bất kỳ sự kiện nào ở trên
         default:
-            Serial.print("No ");
+         
             break;
   }
 }
@@ -136,9 +138,23 @@ void setupWifi(){
        wifiMode = 1;
        checkButton();
     }
+    
     Serial.print("📡 Địa chỉ IP: ");
     Serial.println(WiFi.localIP());
     Serial.println("\n✅ Đã hoàn thành kết nối WiFi!");
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2, ntpServer3);
+     retry = 0;
+    while (!getLocalTime(&timeinfo) && retry < 20) {
+      Serial.println("⏳ Đang đồng bộ thời gian...");
+      delay(300);
+      retry++;
+    }
+    if (retry == 20) {
+      Serial.println("❌ Không thể lấy thời gian!");
+    } else {
+      Serial.println("✅ Lấy thời gian thành công!");
+      time(&now); // lưu epoch time
+    }
   }else{
     Serial.println("ESP32 WiFi network created!");
     WiFi.mode(WIFI_AP);
@@ -220,95 +236,79 @@ String chuyenDoi (int time){
   }
   return timeNew;
 }
-
 void setTimeHis(){
- if (Firebase.ready()&& signupOk){
-    if(!Firebase.RTDB.readStream(&fbdo_s2))
-    if (fbdo_s2.streamAvailable()){
-      if(fbdo_s2.dataType()=="int"){
-        timeSetHis=fbdo_s2.intData()*1000;
-       }
+  if (Firebase.ready() && signupOk) {
+    if (!Firebase.RTDB.readStream(&fbdo_s2)) {
+      Serial.println("❌ readStream s2 error: " + fbdo_s2.errorReason());
+      return;
     }
- }
+    if (fbdo_s2.streamAvailable()) {
+      Serial.println("String(fbdo_s2.dataType())");
+      if (fbdo_s2.dataType() == "int"||fbdo_s2.dataType() == "String") {
+        timeSetHis = fbdo_s2.intData() * 1000; // đổi giây thành ms
+        Serial.println("⏳ TimeSetHis updated: " + String(timeSetHis));
+      }
+    }
+  }
 }
-void getTime(){
- 
- retry = 0;
-  while (!getLocalTime(&timeinfo) && retry < 20) {
-    Serial.println("⏳ Đang đồng bộ thời gian...");
-    delay(300);
-    retry++;
-  }
-
-  if (retry == 20) {
-    Serial.println("❌ Không thể lấy thời gian!");
-  } else {
-    Serial.println("✅ Lấy thời gian thành công!");
-
-    // Lấy luôn epoch time
-    time(&now);
-    if (now > 100000) {
-      Serial.print("Epoch time: ");
-      Serial.println(now);
-    } else {
-      Serial.println("⚠️ Epoch chưa hợp lệ!");
-    }
-  }
+void updateTime() {
+  time(&now); // lấy epoch hiện tại
+  localtime_r(&now, &timeinfo); // convert sang struct tm
 }
 
 void checkLineHis() {
-  if (Firebase.RTDB.getInt(&fbdo, "/Count/CountHis")) {
+  if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/Count/CountHis")) {
    countHis=fbdo.intData();
    if(countHis > 5){
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
 
-     if (Firebase.RTDB.getJSON(&fbdo, "/History", &query)) {
+     if (Firebase.RTDB.getJSON(&fbdo, "/"+uid+"/"+name+"/History", &query)) {
        FirebaseJson json = fbdo.jsonObject();
        size_t count = json.iteratorBegin();   
        String key, value;
        int type;
        json.iteratorGet(0, type, key, value);
        Serial.printf("Key: %s, Value: %s\n", key.c_str(), value.c_str());
-       Firebase.RTDB.deleteNode(&fbdo, "/History/" + key);
+       Firebase.RTDB.deleteNode(&fbdo, "/"+uid+"/"+name+"/History/" + key);
        json.iteratorEnd();
        query.clear();
       }
      countHis = fbdo.intData()-1;
-     Firebase.RTDB.setInt(&fbdo, "/Count/CountHis", countHis);
+     Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+"/Count/CountHis", countHis);
    }
  }
 }
 void checkLineWar(){  
- if (Firebase.RTDB.getInt(&fbdo, "/Count/CountWar")) {
+ if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/Count/CountWar")) {
    countWar=fbdo.intData();
    if(countWar > 5){
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
 
-     if (Firebase.RTDB.getJSON(&fbdo, "/WarHistory", &query)) {
+     if (Firebase.RTDB.getJSON(&fbdo, "/"+uid+"/"+name+"/WarHistory", &query)) {
        FirebaseJson json = fbdo.jsonObject();
        size_t count = json.iteratorBegin();   
        String key, value;
        int type;
        json.iteratorGet(0, type, key, value);
        Serial.printf("Key: %s, Value: %s\n", key.c_str(), value.c_str());
-       Firebase.RTDB.deleteNode(&fbdo, "/WarHistory/" + key);
+       Firebase.RTDB.deleteNode(&fbdo, "/"+uid+"/"+name+"/WarHistory/" + key);
        json.iteratorEnd();
        query.clear();
       }
      countWar = fbdo.intData()-1;
-     Firebase.RTDB.setInt(&fbdo, "/Count/CountWar", countWar);
+     Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+"/Count/CountWar", countWar);
    }
  }
 }
 void hisdatabase(float hum,float temp){
+ // Serial.println(String(timeSetHis));
  if (Firebase.ready()&& signupOk &&((millis()-prevMillisHis)>timeSetHis|| prevMillisHis==0)){
   prevMillisHis=millis();  
-  getTime();
-  //getTimeEpoch();
+    updateTime();
   String time = chuyenDoi(timeinfo.tm_mday) + "-" + 
               chuyenDoi(timeinfo.tm_mon + 1) + "_" +   // tm_mon bắt đầu từ 0 → cộng 1
               chuyenDoi(timeinfo.tm_hour) + ":" + 
@@ -320,13 +320,13 @@ void hisdatabase(float hum,float temp){
   json.set("Temp", temp);
   json.set("Hum", hum);
 
-  String path = "History/" + String(now);
+  String path = "/"+uid+"/"+name+ "/History/" + String(now);
    if (Firebase.RTDB.setJSON(&fbdo, path.c_str(),&json)) {
       
       
-      if (Firebase.RTDB.getInt(&fbdo, "/Count/CountHis")) {
+      if (Firebase.RTDB.getInt(&fbdo, "/"+uid+"/"+name+"/Count/CountHis")) {
         countHis = fbdo.intData() + 1;
-        Firebase.RTDB.setInt(&fbdo, "/Count/CountHis", countHis);
+        Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+"/Count/CountHis", countHis);
       }
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
@@ -337,8 +337,10 @@ void hisdatabase(float hum,float temp){
 
 void getTempWar(){
   if (Firebase.ready()&& signupOk){
-    if(!Firebase.RTDB.readStream(&fbdo_s1))
-    
+    if (!Firebase.RTDB.readStream(&fbdo_s1)) {
+      Serial.println("❌ readStream s1 error: " + fbdo_s1.errorReason());
+      return;
+    }
     if (fbdo_s1.streamAvailable()){
       if(fbdo_s1.dataType()=="string"){
         sendDataWarning=0;
@@ -351,9 +353,12 @@ void getTempWar(){
 
 void getLine(){
   if (Firebase.ready()&& signupOk){
-    if(!Firebase.RTDB.readStream(&fbdo_s3))
-    
+    if (!Firebase.RTDB.readStream(&fbdo_s3)) {
+      Serial.println("❌ readStream s3 error: " + fbdo_s3.errorReason());
+      return;
+    }
     if (fbdo_s3.streamAvailable()){
+      
       if(fbdo_s3.dataType()=="int"){
         lineSet=fbdo_s3.intData();
       
@@ -368,7 +373,7 @@ void warDatabase(float hum,float temp){
    prevMillisWar=millis();
    if (temp>tempSet &&((millis()-sendDataWarning)>50000|| sendDataWarning==0)) {
     sendDataWarning=millis();
-    getTime();
+    updateTime();
   //  getTimeEpoch();
  String time = chuyenDoi(timeinfo.tm_mday) + "-" + 
               chuyenDoi(timeinfo.tm_mon + 1) + "_" +   // tm_mon bắt đầu từ 0 → cộng 1
@@ -380,12 +385,12 @@ void warDatabase(float hum,float temp){
     json.set("TempWar", tempSet);
     json.set("Temp", temp);
  
-  String path = "WarHistory/" + String(now);
+  String path =  "/"+uid+"/"+name+"/WarHistory/" + String(now);
   if (Firebase.RTDB.setJSON(&fbdo, path.c_str(),&json)) {
      
-      if (Firebase.RTDB.getInt(&fbdo, "/Count/CountWar")) {
+      if (Firebase.RTDB.getInt(&fbdo, "/"+uid+"/"+name+"/Count/CountWar")) {
         countWar = fbdo.intData() + 1;
-        Firebase.RTDB.setInt(&fbdo, "/Count/CountWar", countWar);
+        Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+"/Count/CountWar", countWar);
       }
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
@@ -393,15 +398,16 @@ void warDatabase(float hum,float temp){
   }
  }
 }
+
 void truyenChinh(float hum,float temp){
   if (Firebase.ready()&& signupOk &&((millis()-sendDataPrevMillis)>5000|| sendDataPrevMillis==0)){
   sendDataPrevMillis=millis();
-  if (Firebase.RTDB.setFloat(&fbdo, "Sensor/temp", temp)) {
+  if (Firebase.RTDB.setFloat(&fbdo,"/"+uid+"/"+name+ "/Sensor/temp", temp)) {
       
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
     }
-    if (Firebase.RTDB.setFloat(&fbdo, "Sensor/hum", hum)) {
+    if (Firebase.RTDB.setFloat(&fbdo,"/"+uid+"/"+name+ "/Sensor/hum", hum)) {
      
     } else {
       Serial.println("FAILED: " + fbdo.errorReason());
@@ -427,24 +433,26 @@ Firebase.reconnectWiFi(true);
   DHT22.begin();
   delay(1500);
   // Cấu hình NTP
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+ 
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     return;
 }
   // cau hinh stream
-if (!Firebase.RTDB.beginStream(&fbdo_s1, "/Warning/TempWarSet"))
+if (!Firebase.RTDB.beginStream(&fbdo_s1, "/"+uid+"/"+name+"/Warning/TempWarSet"))
   Serial.printf("stream 1 (Nhiet do dat canh bao) begin error,%s\n\n", fbdo_s1.errorReason().c_str());
-  if (!Firebase.RTDB.beginStream(&fbdo_s2, "/TimeSetInHistory/TimeSet/"))
+if (Firebase.RTDB.getFloat(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet")) {
+   tempSet=fbdo.floatData();}
+ if (!Firebase.RTDB.beginStream(&fbdo_s2, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet"))
   Serial.printf("stream 2 (Truyen du lieu luu tru len database ) begin error,%s\n\n", fbdo_s2.errorReason().c_str());
-if (!Firebase.RTDB.beginStream(&fbdo_s3, "/LineSet/LineSet/"))
+if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+"/TimeSetInHistory/TimeSet")) {
+   timeSetHis=fbdo.intData()*1000;}
+if (!Firebase.RTDB.beginStream(&fbdo_s3,"/"+uid+"/"+name+ "/LineSet/LineSet"))
   Serial.printf("stream 3 (Nhan du lieu so dong hien thi ) begin error,%s\n\n", fbdo_s3.errorReason().c_str());
-   
+   if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/LineSet/LineSet")) {
+   lineSet=fbdo.intData()*4;}
 }
 void loopWifi(){
-  if (checktime==0){
-   getTime();
-   checktime=1;}
  if ((millis()-prevMillisMain)>5000){
   prevMillisMain=millis(); 
   Hum= DHT22.runHum();
@@ -468,24 +476,19 @@ void loopWifi(){
 class Config {
 public:
   void begin(){
-    
     pinMode(ledPin, OUTPUT);
     pinMode(btnPin, INPUT_PULLUP);
     blinker.attach_ms(50, ledControl);
-    
-     EEPROM.begin(256);
+    EEPROM.begin(256);
     char ssid_temp[32], password_temp[64], uid_temp[64], name_temp[32];
     EEPROM.readString(0,ssid_temp, sizeof(ssid_temp));
     EEPROM.readString(32,password_temp,sizeof(password_temp));
-     EEPROM.readString(100,uid_temp,sizeof(uid_temp));
-      EEPROM.readString(200,name_temp,sizeof(name_temp));
+    EEPROM.readString(100,uid_temp,sizeof(uid_temp));
+    EEPROM.readString(200,name_temp,sizeof(name_temp));
     ssid = String(ssid_temp);
     password = String(password_temp);
     uid=String(uid_temp);
- name=String(name_temp);
-    if(ssid != ""){
-     
-    }
+    name=String(name_temp);
     setupWifi(); // Thiết lập WiFi
     if(wifiMode == 0 ) setupWebServer();
     if (wifiMode==1){
@@ -496,8 +499,8 @@ public:
 
   void run(){
     checkButton();
-     if(wifiMode == 0  ) webServer.handleClient();
-     if (wifiMode==1 ){
+     if(wifiMode == 0) webServer.handleClient();
+     if (wifiMode==1){
       loopWifi();
      }
   }
