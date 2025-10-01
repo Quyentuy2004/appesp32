@@ -1,0 +1,75 @@
+# ==========================
+# Android Studio / Gradle
+# ==========================
+
+# Build folders
+/build/
+/bin/
+/out/
+/gradle/
+/.gradle/
+
+# Local configuration
+local.properties
+
+# IDE settings
+.idea/
+*.iml
+
+# Logs & temp files
+*.log
+*.tmp
+*.swp
+
+# Generated files
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.dex
+*.class
+*.jar
+*.war
+*.ear
+
+# NDK / CMake / JNI build cache
+obj/
+*.o
+*.so
+
+# ==========================
+# Arduino / ESP32
+# ==========================
+
+# Arduino build outputs
+*.elf
+*.bin
+*.hex
+*.map
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ==========================
+# VSCode / Other IDEs
+# ==========================
+.vscode/
+*.code-workspace
+
+# ==========================
+# OS-specific files
+# ==========================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
