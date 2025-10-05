@@ -37,6 +37,7 @@ unsigned long prevMillisMain = 0;
 unsigned long prevMillisHis = 0;
 unsigned long prevMillisWar = 0;
 unsigned long sendDataWarning=0;
+unsigned long timeOnl=0;
 unsigned long countHis = 0;
 int checktime=0;
 unsigned long countWar=0;
@@ -398,7 +399,13 @@ void warDatabase(float hum,float temp){
   }
  }
 }
-
+void capNhatOnl(){
+if (Firebase.RTDB.setTimestamp(&fbdo, "/User/"+uid+"/"+name)) {
+    Serial.println("Đã cập nhật timestamp!");
+  } else {
+    Serial.println(fbdo.errorReason());
+  }
+}
 void truyenChinh(float hum,float temp){
   if (Firebase.ready()&& signupOk &&((millis()-sendDataPrevMillis)>5000|| sendDataPrevMillis==0)){
   sendDataPrevMillis=millis();
@@ -453,10 +460,14 @@ if (!Firebase.RTDB.beginStream(&fbdo_s3,"/"+uid+"/"+name+ "/LineSet/LineSet"))
    lineSet=fbdo.intData()*4;}
 }
 void loopWifi(){
- if ((millis()-prevMillisMain)>5000){
+ if(((millis()-prevMillisMain)>5000)||prevMillisMain==0){
   prevMillisMain=millis(); 
   Hum= DHT22.runHum();
   Temp=DHT22.runTemp();
+ }
+ if(((millis()-timeOnl)>5000)||timeOnl==0){
+  timeOnl=millis(); 
+ capNhatOnl();
  }
  getLine();
   if ((millis()-deleteHisMillis)>10000){
