@@ -445,15 +445,15 @@ Firebase.reconnectWiFi(true);
     Serial.println("Failed to obtain time");
     return;
 }
-if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet")) {
+if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet")) {
     Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet", tempSet);
     Serial.println("✅ Tạo TempWarSet mặc định = 35.0°C");
 }
-if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet")) {
-    Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet, timeSetHis);
+if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet")) {
+    Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet", timeSetHis);
     Serial.println("✅ Tạo timeSetHis mặc định = 30 phút");
 }
-if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet")) {
+if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet")) {
     Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet", lineSet);
     Serial.println("✅ Tạo lineSet mặc định 100 dòng");
 }
@@ -482,7 +482,7 @@ void loopWifi(){
  capNhatOnl();
  }
  getLine();
-  if ((millis()-deleteHisMillis)>(TimeSetHis/5)){
+  if ((millis()-deleteHisMillis)>(timeSetHis/5)){
     deleteHisMillis=millis(); 
   checkLineHis();
   }
