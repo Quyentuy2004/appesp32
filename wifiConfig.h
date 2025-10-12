@@ -44,10 +44,10 @@ unsigned long countWar=0;
 bool signupOk = false;
 float Temp=0.0;
 float Hum=0.0;
-unsigned long lineSet= 0;
-unsigned long timeSetHis=0;
+unsigned long lineSet= 100;
+unsigned long timeSetHis=1800000;
 int retry = 0;
-float tempSet=0.0;
+float tempSet=35.0;
 time_t now;
 // Máy chủ NTP
 const char* ntpServer = "pool.ntp.org";
@@ -260,7 +260,7 @@ void updateTime() {
 void checkLineHis() {
   if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/Count/CountHis")) {
    countHis=fbdo.intData();
-   if(countHis > 5){
+   if(countHis > lineSet){
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
@@ -284,7 +284,7 @@ void checkLineHis() {
 void checkLineWar(){  
  if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/Count/CountWar")) {
    countWar=fbdo.intData();
-   if(countWar > 5){
+   if(countWar > lineSet){
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
@@ -306,7 +306,7 @@ void checkLineWar(){
  }
 }
 void hisdatabase(float hum,float temp){
- // Serial.println(String(timeSetHis));
+  
  if (Firebase.ready()&& signupOk &&((millis()-prevMillisHis)>timeSetHis|| prevMillisHis==0)){
   prevMillisHis=millis();  
     updateTime();
@@ -445,6 +445,18 @@ Firebase.reconnectWiFi(true);
     Serial.println("Failed to obtain time");
     return;
 }
+if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet")) {
+    Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+"/Warning/TempWarSet", tempSet);
+    Serial.println("✅ Tạo TempWarSet mặc định = 35.0°C");
+}
+if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet")) {
+    Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+"/TimeSetInHistory/TimeSet, timeSetHis);
+    Serial.println("✅ Tạo timeSetHis mặc định = 30 phút");
+}
+if (!Firebase.RTDB.pathExist(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet")) {
+    Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet", lineSet);
+    Serial.println("✅ Tạo lineSet mặc định 100 dòng");
+}
   // cau hinh stream
 if (!Firebase.RTDB.beginStream(&fbdo_s1, "/"+uid+"/"+name+"/Warning/TempWarSet"))
   Serial.printf("stream 1 (Nhiet do dat canh bao) begin error,%s\n\n", fbdo_s1.errorReason().c_str());
@@ -470,7 +482,7 @@ void loopWifi(){
  capNhatOnl();
  }
  getLine();
-  if ((millis()-deleteHisMillis)>10000){
+  if ((millis()-deleteHisMillis)>(TimeSetHis/5)){
     deleteHisMillis=millis(); 
   checkLineHis();
   }
