@@ -112,7 +112,7 @@ public:
   }
 
   float runHum() {
-    delay(2000);  // Delay giữa 2 lần đọc
+   // delay(2000);  // Delay giữa 2 lần đọc
     return hum;
   }
 } DHT22;  // Tạo một đối tượng toàn cục tên là DHT22

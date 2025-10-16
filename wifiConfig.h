@@ -363,7 +363,7 @@ void getLine(){
       if(fbdo_s3.dataType()=="int"){
         lineSet=fbdo_s3.intData();
       
-        lineSet*=4;
+        
       }
     }
   }
@@ -457,6 +457,14 @@ if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet")) {
     Firebase.RTDB.setFloat(&fbdo, "/"+uid+"/"+name+ "/LineSet/LineSet", lineSet);
     Serial.println("✅ Tạo lineSet mặc định 100 dòng");
 }
+if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+ "/Count/CountHis")) {
+    Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+ "/Count/CountHis", 0);
+    Serial.println("0 dong cai ban dau");
+}
+if (!Firebase.RTDB.pathExisted(&fbdo, "/"+uid+"/"+name+ "/Count/CountWar")) {
+    Firebase.RTDB.setInt(&fbdo, "/"+uid+"/"+name+ "/Count/CountWar", 0);
+    Serial.println("0 dong cai ban dau");
+}
   // cau hinh stream
 if (!Firebase.RTDB.beginStream(&fbdo_s1, "/"+uid+"/"+name+"/Warning/TempWarSet"))
   Serial.printf("stream 1 (Nhiet do dat canh bao) begin error,%s\n\n", fbdo_s1.errorReason().c_str());
@@ -469,7 +477,7 @@ if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+"/TimeSetInHistory/TimeSet")) {
 if (!Firebase.RTDB.beginStream(&fbdo_s3,"/"+uid+"/"+name+ "/LineSet/LineSet"))
   Serial.printf("stream 3 (Nhan du lieu so dong hien thi ) begin error,%s\n\n", fbdo_s3.errorReason().c_str());
    if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+ "/LineSet/LineSet")) {
-   lineSet=fbdo.intData()*4;}
+   lineSet=fbdo.intData();}
 }
 void loopWifi(){
  if(((millis()-prevMillisMain)>5000)||prevMillisMain==0){
