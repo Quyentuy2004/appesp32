@@ -7,6 +7,16 @@
 #include <WebServer.h> // Thêm thư viện WebServer
 #include <Ticker.h>
 
+
+
+#define FIREBASE_DISABLE_DEBUG
+#define FIREBASE_DISABLE_DEBUG_ERROR
+
+#define DISABLE_FIRESTORE
+#define DISABLE_STORAGE
+#define DISABLE_CLOUD_FUNCTIONS
+//#define DISABLE_MESSAGING
+
 #include<Firebase_ESP_Client.h>
 #include"addons/TokenHelper.h"
 #include"addons/RTDBHelper.h"
@@ -58,7 +68,7 @@ int retry = 0;
 float tempSet=0.0;
 time_t now;
 // Máy chủ NTP
-const char* ntpServer = "pool.ntp.org";
+//const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 7 * 3600; // GMT+7 cho Việt Nam
 const int   daylightOffset_sec = 0;
 
@@ -71,6 +81,8 @@ String ssid;
 String password;
 String uid;
 String name;
+unsigned long lastOnlineMillis = 0;
+const unsigned long ONLINE_INTERVAL = 5000; // 5 giây
 void checkButton(); 
 
 void blinkLed(uint32_t t){
@@ -264,7 +276,7 @@ void getTime(){
 void checkLineHis() {
   if (Firebase.RTDB.getInt(&fbdo,"/"+uid+"/"+name+"/"+String(Node)+ "/Count/CountHis")) {
    countHis=fbdo.intData();
-   if(countHis > 5){// sua 
+   if(countHis > lineSet){// sua 
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
@@ -289,7 +301,7 @@ void checkLineHis() {
 void checkLineWar(){  
  if (Firebase.RTDB.getInt(&fbdo, "/"+uid+"/"+name+"/"+String(Node)+"/Count/CountWar")) {
    countWar=fbdo.intData();
-   if(countWar > 5){// can sua
+   if(countWar > lineSet){// can sua
     QueryFilter query;
     query.orderBy("$key"); 
     query.limitToFirst(1);  // chỉ lấy 1 bản ghi cũ nhất
@@ -402,6 +414,32 @@ void warDatabase(float hum1,float hum2,float temp){
   }
  }
 }
+
+void capNhatOnl(){
+  if (Firebase.ready() && signupOk) {
+    Firebase.RTDB.setTimestamp(
+      &fbdo,
+      "/User/"+uid+"/"+name+"/Online"
+    );
+  }
+  // if (Firebase.RTDB.setTimestamp(&fbdo, "/User/"+uid+"/"+name)) {
+  //   Serial.println("Đã cập nhật timestamp!");
+  // } else {
+  //   Serial.println(fbdo.errorReason());
+  // }
+}
+
+void resyncTimeIfNeeded() {
+  time_t nowCheck;
+  time(&nowCheck);
+
+  // Nếu time bị sai hoặc quá nhỏ → sync lại
+  if (nowCheck < 1700000000) { // ~ năm 2023
+    Serial.println("⏳ Re-sync NTP...");
+    getTime(); // hàm bạn đã có
+  }
+}
+
 void truyenChinh(float hum1,float hum2,float temp){
   if (Firebase.ready()&& signupOk &&((millis()-sendDataPrevMillis)>5000|| sendDataPrevMillis==0)){
   sendDataPrevMillis=millis();
@@ -448,7 +486,7 @@ void setWifi(){
 
   
   delay(1500);
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+configTime( gmtOffset_sec,daylightOffset_sec,"time.google.com","time.cloudflare.com","pool.ntp.org");
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     return;
@@ -520,6 +558,15 @@ void loopWifi(){
   hisdatabase(Hum1,Hum2, Temp);
   getTempWar();
   warDatabase(Hum1,Hum2, Temp);
+  if (millis() - lastOnlineMillis >= ONLINE_INTERVAL) {
+  lastOnlineMillis = millis();
+ capNhatOnl();
+  resyncTimeIfNeeded();
+}
+//   if(((millis()-timeOnl)>5000)||timeOnl==0){// sua
+//   timeOnl=millis(); 
+//   capNhatOnl();
+// }
 }
 
 class Config {
