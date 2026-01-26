@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include "dht22.h"
 #include "i2c-lcd.h"
-
+#include "printf.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +52,8 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
-
+float soil=0.0;
+int P=0;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -64,11 +65,57 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+void Task_1(void);
+void Task_2(void);
+void Task_3(void);
+void Task_4(void);
+void Task_5(void);
+void Task_exe(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void Task_1(){
+	 if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK (giả sử)
+		         {
+		 myPrintf(&huart1,"DHT22 read success\r\n");
+
+		         }
+		         else
+		         {
+		        	 myPrintf(&huart1,"DHT22 read error\r\n");
+		         }
+}
+void Task_2(){
+	myPrintf(&huart1,"thuc hien task do do am dat\r\n");
+	 soil = rand() % 100;   // số ngẫu nhiên từ 0 → 9
+}
+void Task_3(){
+	 myPrintf(&huart1,"Temp: %.2f C, Soil: %.2f %%\r\n",
+			                    dht_data.Temperature,
+			                    soil);
+}
+void Task_4(){
+	char temp_4[20];
+	char soil_4[20];
+
+	sprintf(temp_4, "Temp: %.2f C", dht_data.Temperature);
+	sprintf(soil_4, "Soil: %.2f %", soil);
+
+
+	lcd_clear();
+
+	      lcd_put_cur(0, 0);
+
+
+	  	lcd_send_string(temp_4);
+	  	 lcd_put_cur(1, 0);
+	  	lcd_send_string(soil_4);
+}
+void Task_5(){
+
+
+}
 
 /* USER CODE END 0 */
 
@@ -112,14 +159,17 @@ int main(void)
       dht22.htim = &htim2;
 
       DHT22_Init(&dht22);
+      // cấu hình ban đầu cho lcd-i2c
       lcd_init();
+
       lcd_clear();
 
       lcd_put_cur(0, 0);
-      lcd_send_string("Hello");
-
-      lcd_put_cur(1, 0);
-      lcd_send_string("Temp: 25.3C");
+      lcd_send_string("Set up");
+      // cấu hình con trỏ hàm
+      void (*sptt_task_point_array[5])(void) = {Task_1, Task_2, Task_3,Task_4,Task_5};
+//      lcd_put_cur(1, 0);
+//      lcd_send_string("Temp: 25.3C");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,19 +187,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  myPrintf(&huart1,"hoat dong");
-	  if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK (giả sử)
-	         {
-	            myPrintf(&huart1,"Temp: %.1f C, Humi: %.1f %%\r\n",
-	                    dht_data.Temperature,
-	                    dht_data.Humidity);
-	         }
-	         else
-	         {
-	        	 myPrintf(&huart1,"DHT22 read error\r\n");
-	         }
+	//  myPrintf(&huart1,"hoat dong");
 
-	         HAL_Delay(2000); // DHT22 chỉ đọc mỗi ~2s
+	  if ((uwTick % 10000) == 1000) {
+		  for (int i = 0; i < 5; i++)
+		  { sptt_task_point_array[i](); } }
+	         //HAL_Delay(2000); // DHT22 chỉ đọc mỗi ~2s
 
   }
   /* USER CODE END 3 */
