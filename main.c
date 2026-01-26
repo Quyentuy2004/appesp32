@@ -31,13 +31,18 @@
 /* USER CODE BEGIN PTD */
 DHT22_HandleTypeDef dht22;
 DHT22_Data_t dht_data;
+I2C_HandleTypeDef hi2c1;
+
+TIM_HandleTypeDef htim2;
+
+UART_HandleTypeDef huart1;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
- I2C_HandleTypeDef hi2c1;  // change your handler here accordingly
+// I2C_HandleTypeDef hi2c1;  // change your handler here accordingly
 
-#define SLAVE_ADDRESS_LCD 0x4E; // change this according to ur setup - DATASHEET
+#define SLAVE_ADDRESS_LCD 0x4E // change this according to ur setup - DATASHEET
 
 /* USER CODE END PD */
 
@@ -47,15 +52,16 @@ DHT22_Data_t dht_data;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
 
-TIM_HandleTypeDef htim2;
 
-UART_HandleTypeDef huart1;
-float soil=0.0;
-int P=0;
 /* USER CODE BEGIN PV */
-
+float soil=0.0;
+int  g_period_ms=0;
+char rxUart;
+static uint8_t  uart_rx_ch;
+static char     uart_line[128];
+static uint16_t uart_line_len = 0;
+static volatile uint8_t uart_line_ready = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,6 +71,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
+static void ProcessCmd(char *line);
+//static void UART_StartRxIT(void);
 void Task_1(void);
 void Task_2(void);
 void Task_3(void);
@@ -75,6 +83,78 @@ void Task_exe(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void ProcessCmd(char *line)
+{
+  // Ví dụ: PERIOD=5000
+  if (strncmp(line, "PERIOD=", 7) == 0)
+  {
+    uint32_t p = (uint32_t)atoi(line + 7);
+    if (p >= 2000 && p <= 600000)
+    {
+      g_period_ms = p;
+      // HAL_UART_Transmit(... "OK\r\n")
+      myPrintf(&huart1," HAL_UART_Transmit... OK:%d\r\n", g_period_ms);
+    }
+    else
+    {
+    	myPrintf(&huart1," HAL_UART_Transmit... ERROR\r\n");
+    }
+  }
+  else if (strcmp(line, "SAVE") == 0)
+  {
+    // ee_data.magic = CFG_MAGIC;
+    // ee_data.period_ms = g_period_ms;
+    // ee_write();
+    // HAL_UART_Transmit(... "SAVED\r\n")
+  }
+  else if (strcmp(line, "LOAD") == 0)
+  {
+    // ee_read();
+    // if (ee_data.magic == CFG_MAGIC) g_period_ms = ee_data.period_ms;
+    // HAL_UART_Transmit(... "LOADED\r\n")
+  }
+  else
+  {
+    // HAL_UART_Transmit(... "UNKNOWN\r\n")
+  }
+}
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    char c = (char)uart_rx_ch;
+
+    if (!uart_line_ready)
+    {
+      // Kết thúc dòng khi gặp CR hoặc LF
+      if (c == '.')
+      {
+        if (uart_line_len > 0)          // tránh nhận dòng rỗng
+        {
+          uart_line[uart_line_len] = '\0';
+          uart_line_ready = 1;
+        }
+      }
+      else
+      {
+        // Thêm ký tự vào buffer
+        if (uart_line_len < (sizeof(uart_line) - 1))
+        {
+          uart_line[uart_line_len++] = c;
+        }
+        else
+        {
+          // Tràn buffer -> reset
+          uart_line_len = 0;
+        }
+      }
+    }
+
+    // Nhận tiếp byte tiếp theo
+    HAL_UART_Receive_IT(&huart1, &uart_rx_ch, 1);
+  }
+}
+
 void Task_1(){
 	 if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK (giả sử)
 		         {
@@ -100,21 +180,28 @@ void Task_4(){
 	char soil_4[20];
 
 	sprintf(temp_4, "Temp: %.2f C", dht_data.Temperature);
-	sprintf(soil_4, "Soil: %.2f %", soil);
+	sprintf(soil_4, "Soil: %.2f %%", soil);
+	lcd_put_cur(0,0);
+	lcd_send_string("                "); // 16 spaces
+	lcd_put_cur(0,0);
+	lcd_send_string(temp_4);
 
-
-	lcd_clear();
-
-	      lcd_put_cur(0, 0);
-
-
-	  	lcd_send_string(temp_4);
-	  	 lcd_put_cur(1, 0);
-	  	lcd_send_string(soil_4);
+	lcd_put_cur(1,0);
+	lcd_send_string("                ");
+	lcd_put_cur(1,0);
+	lcd_send_string(soil_4);
 }
 void Task_5(){
+	 myPrintf(&huart1,"vao task 5\r\n");
+	if (uart_line_ready)
+	  {
+		 myPrintf(&huart1,"vao task DA NHAN DC CHUOI\r\n");
+	    uart_line_ready = 0;
 
+	    ProcessCmd(uart_line);  // xử lý lệnh
 
+	    uart_line_len = 0;      // reset để nhận dòng mới
+	  }
 }
 
 /* USER CODE END 0 */
@@ -168,6 +255,9 @@ int main(void)
       lcd_send_string("Set up");
       // cấu hình con trỏ hàm
       void (*sptt_task_point_array[5])(void) = {Task_1, Task_2, Task_3,Task_4,Task_5};
+      uart_line_len = 0;
+        uart_line_ready = 0;
+        HAL_UART_Receive_IT(&huart1, &uart_rx_ch, 1);  // đổi huart1 thành huart bạn dùng
 //      lcd_put_cur(1, 0);
 //      lcd_send_string("Temp: 25.3C");
   /* USER CODE END 2 */
