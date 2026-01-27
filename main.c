@@ -25,24 +25,31 @@
 #include "dht22.h"
 #include "i2c-lcd.h"
 #include "printf.h"
+#include "soil_adc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 DHT22_HandleTypeDef dht22;
 DHT22_Data_t dht_data;
-I2C_HandleTypeDef hi2c1;
+
 
 TIM_HandleTypeDef htim2;
-
+ADC_HandleTypeDef hadc1;
 UART_HandleTypeDef huart1;
+SoilADC_t soil_cfg = {// BIEN TRUC LUA CHON CHAN CHO CAM BIEN DO AM DAT
+    .ADCx = ADC1,
+    .channel = ADC_CHANNEL_0,   // PA2
+    .GPIOx = GPIOA,
+    .GPIO_Pin = GPIO_PIN_0
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-// I2C_HandleTypeDef hi2c1;  // change your handler here accordingly
 
-#define SLAVE_ADDRESS_LCD 0x4E // change this according to ur setup - DATASHEET
+I2C_HandleTypeDef hi2c1;// KHAI BAO CHAN I2C LCD
+#define SLAVE_ADDRESS_LCD 0x4E //KHAI BAO DIA CHI I2C LCD
 
 /* USER CODE END PD */
 
@@ -55,9 +62,10 @@ UART_HandleTypeDef huart1;
 
 
 /* USER CODE BEGIN PV */
-float soil=0.0;
-int  g_period_ms=0;
-char rxUart;
+uint32_t last_run = 0;// BIEN THOI GIAN LUU THOI GIAN CHAY LAN TRUOC
+float soil=0.0;// BIEN LUU TRU CAM BIEN DO AM DAT
+int  g_period_ms=2000;// BIEN LUU TRU THOI GIAN THUC HIEN CHU KY
+char rxUart;// BIEN NHAN 1 BYTE UART
 static uint8_t  uart_rx_ch;
 static char     uart_line[128];
 static uint16_t uart_line_len = 0;
@@ -70,6 +78,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 static void ProcessCmd(char *line);
 //static void UART_StartRxIT(void);
@@ -85,19 +94,18 @@ void Task_exe(void);
 /* USER CODE BEGIN 0 */
 static void ProcessCmd(char *line)
 {
-  // Ví dụ: PERIOD=5000
   if (strncmp(line, "PERIOD=", 7) == 0)
   {
     uint32_t p = (uint32_t)atoi(line + 7);
     if (p >= 2000 && p <= 600000)
     {
       g_period_ms = p;
-      // HAL_UART_Transmit(... "OK\r\n")
       myPrintf(&huart1," HAL_UART_Transmit... OK:%d\r\n", g_period_ms);
     }
     else
     {
-    	myPrintf(&huart1," HAL_UART_Transmit... ERROR\r\n");
+    	myPrintf(&huart1," SET PERIOD ERROR\r\n");
+    	myPrintf(&huart1,"YEU CAU: PERIOD >= 2000 && PERIOD <= 600000\r\n");
     }
   }
   else if (strcmp(line, "SAVE") == 0)
@@ -126,7 +134,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     if (!uart_line_ready)
     {
-      // Kết thúc dòng khi gặp CR hoặc LF
+      // Kết thúc dòng khi .
       if (c == '.')
       {
         if (uart_line_len > 0)          // tránh nhận dòng rỗng
@@ -156,7 +164,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 void Task_1(){
-	 if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK (giả sử)
+	 if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK
 		         {
 		 myPrintf(&huart1,"DHT22 read success\r\n");
 
@@ -166,19 +174,21 @@ void Task_1(){
 		        	 myPrintf(&huart1,"DHT22 read error\r\n");
 		         }
 }
+
 void Task_2(){
 	myPrintf(&huart1,"thuc hien task do do am dat\r\n");
-	 soil = rand() % 100;   // số ngẫu nhiên từ 0 → 9
+	soil = Soil_ReadRaw(&soil_cfg);
 }
+
 void Task_3(){
 	 myPrintf(&huart1,"Temp: %.2f C, Soil: %.2f %%\r\n",
 			                    dht_data.Temperature,
 			                    soil);
 }
+
 void Task_4(){
 	char temp_4[20];
 	char soil_4[20];
-
 	sprintf(temp_4, "Temp: %.2f C", dht_data.Temperature);
 	sprintf(soil_4, "Soil: %.2f %%", soil);
 	lcd_put_cur(0,0);
@@ -191,15 +201,13 @@ void Task_4(){
 	lcd_put_cur(1,0);
 	lcd_send_string(soil_4);
 }
+
 void Task_5(){
-	 myPrintf(&huart1,"vao task 5\r\n");
 	if (uart_line_ready)
 	  {
-		 myPrintf(&huart1,"vao task DA NHAN DC CHUOI\r\n");
+		myPrintf(&huart1,"vao task DA NHAN DC CHUOI\r\n");
 	    uart_line_ready = 0;
-
 	    ProcessCmd(uart_line);  // xử lý lệnh
-
 	    uart_line_len = 0;      // reset để nhận dòng mới
 	  }
 }
@@ -237,52 +245,51 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_TIM2_Init();
-  HAL_TIM_Base_Start(&htim2);
   MX_I2C1_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start(&htim2);
   // Gán cấu hình cho DHT22
-      dht22.GPIOx = GPIOA;
-      dht22.GPIO_Pin = GPIO_PIN_1;
-      dht22.htim = &htim2;
+  dht22.GPIOx = GPIOA;
+  dht22.GPIO_Pin = GPIO_PIN_1;
+  dht22.htim = &htim2;
 
-      DHT22_Init(&dht22);
+  DHT22_Init(&dht22);
       // cấu hình ban đầu cho lcd-i2c
-      lcd_init();
+  lcd_init();
+  lcd_clear();
+  lcd_put_cur(0, 0);
+  lcd_send_string("Set up");
+  // cấu hình con trỏ hàm cac task
+   void (*sptt_task_point_array[5])(void) = {Task_1, Task_2, Task_3,Task_4,Task_5};
+   // cau hinh ban dau cho uart
+   uart_line_len = 0;
+   uart_line_ready = 0;
+   HAL_UART_Receive_IT(&huart1, &uart_rx_ch, 1);  // đổi huart1 thành huart bạn dùng
+   // cau hinh adc soil
+    Soil_Begin(&soil_cfg);
 
-      lcd_clear();
-
-      lcd_put_cur(0, 0);
-      lcd_send_string("Set up");
-      // cấu hình con trỏ hàm
-      void (*sptt_task_point_array[5])(void) = {Task_1, Task_2, Task_3,Task_4,Task_5};
-      uart_line_len = 0;
-        uart_line_ready = 0;
-        HAL_UART_Receive_IT(&huart1, &uart_rx_ch, 1);  // đổi huart1 thành huart bạn dùng
-//      lcd_put_cur(1, 0);
-//      lcd_send_string("Temp: 25.3C");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	 //char buf[100];
+
+//	  if ((uwTick % g_period_ms) == 1000) {
+//		  for (int i = 0; i < 5; i++)
+//		  { sptt_task_point_array[i](); } }"
 
 
-//	  sprintf(buf,
-//	    "Frame VALID: SrcID=%d, DestID=0, Type=3, Temp1=%d, Hum1=%f, Hum2=%f\r\n",
-//	    node, temp, hum, soil);
- // int d=1;
-	//  float d= 0.1;
-    /* USER CODE END WHILE */
+	  if (HAL_GetTick() - last_run >= g_period_ms)
+	  {
+	      last_run = HAL_GetTick();
 
-    /* USER CODE BEGIN 3 */
-	//  myPrintf(&huart1,"hoat dong");
-
-	  if ((uwTick % 10000) == 1000) {
-		  for (int i = 0; i < 5; i++)
-		  { sptt_task_point_array[i](); } }
-	         //HAL_Delay(2000); // DHT22 chỉ đọc mỗi ~2s
+	      for (int i = 0; i < 5; i++)
+	      {
+	          sptt_task_point_array[i]();
+	      }
+	  }
 
   }
   /* USER CODE END 3 */
@@ -296,6 +303,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -325,6 +333,59 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_41CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -467,7 +528,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
+  /*Configure GPIO pin : PA2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
