@@ -43,6 +43,26 @@ SoilADC_t soil_cfg = {// BIEN TRUC LUA CHON CHAN CHO CAM BIEN DO AM DAT
     .GPIOx = GPIOA,
     .GPIO_Pin = GPIO_PIN_0
 };
+// donnhiemso2
+typedef enum {
+    TASK_NONE = 0,
+    TASK1,
+    TASK2,
+    TASK3,
+	TASK4,
+	TASK5
+} TaskID;
+
+#define Q_SIZE 10
+
+typedef struct {
+    TaskID buf[Q_SIZE];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+} Queue;
+
+Queue q;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -59,7 +79,14 @@ I2C_HandleTypeDef hi2c1;// KHAI BAO CHAN I2C LCD
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
 
+I2C_HandleTypeDef hi2c1;
+
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 uint32_t last_run = 0;// BIEN THOI GIAN LUU THOI GIAN CHAY LAN TRUOC
@@ -70,6 +97,13 @@ static uint8_t  uart_rx_ch;
 static char     uart_line[128];
 static uint16_t uart_line_len = 0;
 static volatile uint8_t uart_line_ready = 0;
+
+// donnhiemso2
+volatile uint32_t tick_ms = 0;
+volatile uint32_t c1 = 0, c2 = 0, c3 = 0, c4=0 , c5=0;
+volatile int t1 = 3000, t2 = 1000, t3 = 3000, t4=1000 , t5=100;
+
+#define TICK_MS 1   // TIM3 interrupt mỗi 1ms
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,6 +113,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 static void ProcessCmd(char *line);
 //static void UART_StartRxIT(void);
@@ -92,40 +127,128 @@ void Task_exe(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+
+// donnhiemso2
+uint8_t Q_Pop(Queue *q, TaskID *task)
+{
+    if (q->count == 0) return 0; // queue empty
+
+    *task = q->buf[q->head];
+    q->head = (q->head + 1) % Q_SIZE;
+    q->count--;
+    return 1;
+}
+uint8_t Q_Push(Queue *q, TaskID task)
+{
+    if (q->count >= Q_SIZE) return 0; // queue full
+
+    q->buf[q->tail] = task;
+    q->tail = (q->tail + 1) % Q_SIZE;
+    q->count++;
+    return 1;
+}
+void Q_Init(Queue *q)
+{
+    q->head = 0;
+    q->tail = 0;
+    q->count = 0;
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+
+	if (htim->Instance == TIM3)
+	    {
+		tick_ms += TICK_MS;
+	     //   c1 += 1; if (c1 >= 2000) { c1 = 0; HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);  }// LED;
+		    c1 += TICK_MS; if (c1 >= t1) { c1 = 0; Q_Push(&q, TASK1);  }
+	        c2 += TICK_MS; if (c2 >= t2) { c2 = 0; Q_Push(&q, TASK2); }
+	        c3 += TICK_MS; if (c3 >= t3 ) { c3 = 0; Q_Push(&q, TASK3); }
+	        c4 += TICK_MS; if (c4 >= t4) { c4 = 0; Q_Push(&q, TASK4); }
+	        c5 += TICK_MS; if (c5 >= t5) { c5 = 0; Q_Push(&q, TASK5); }
+
+	    }
+}
+// het 2
+
+
 static void ProcessCmd(char *line)
 {
-  if (strncmp(line, "PERIOD=", 7) == 0)
-  {
-    uint32_t p = (uint32_t)atoi(line + 7);
-    if (p >= 2000 && p <= 600000)
-    {
-      g_period_ms = p;
-      myPrintf(&huart1," HAL_UART_Transmit... OK:%d\r\n", g_period_ms);
-    }
-    else
-    {
-    	myPrintf(&huart1," SET PERIOD ERROR\r\n");
-    	myPrintf(&huart1,"YEU CAU: PERIOD >= 2000 && PERIOD <= 600000\r\n");
-    }
-  }
-  else if (strcmp(line, "SAVE") == 0)
-  {
-    // ee_data.magic = CFG_MAGIC;
-    // ee_data.period_ms = g_period_ms;
-    // ee_write();
-    // HAL_UART_Transmit(... "SAVED\r\n")
-  }
-  else if (strcmp(line, "LOAD") == 0)
-  {
-    // ee_read();
-    // if (ee_data.magic == CFG_MAGIC) g_period_ms = ee_data.period_ms;
-    // HAL_UART_Transmit(... "LOADED\r\n")
-  }
-  else
-  {
-    // HAL_UART_Transmit(... "UNKNOWN\r\n")
-  }
+	// donnhiemso2
+	    int node = 0;
+	    int per  = 0;
+
+	    // Lệnh: SET,<node>,<period_ms>
+	    // Ví dụ: SET,2,1000
+	    if (sscanf(line, "SET,%d,%d", &node, &per) == 2)
+	    {
+	        if (node < 1 || node > 5)
+	        {
+	            myPrintf(&huart1, "ERR node 1..5\r\n");
+	            return;
+	        }
+	        if (per < 50 || per > 600000)   // tùy bạn giới hạn, 50ms là an toàn hơn
+	        {
+	            myPrintf(&huart1, "ERR period 50..600000(ms)\r\n");
+	            return;
+	        }
+
+	        __disable_irq();
+	        switch(node)
+	        {
+	            case 1: t1 = per; c1 = 0; break;
+	            case 2: t2 = per; c2 = 0; break;
+	            case 3: t3 = per; c3 = 0; break;
+	            case 4: t4 = per; c4 = 0; break;
+	            case 5: t5 = per; c5 = 0; break;
+	            default: break;
+	        }
+	        __enable_irq();
+
+	        myPrintf(&huart1, "OK SET T%d=%dms\r\n", node, per);
+	        return;
+	    }
+	 // het 2
+
+
+	    // donnhiemso1
+//  if (strncmp(line, "PERIOD=", 7) == 0)
+//  {
+//    uint32_t p = (uint32_t)atoi(line + 7);
+//    if (p >= 2000 && p <= 600000)
+//    {
+//      g_period_ms = p;
+//      myPrintf(&huart1," HAL_UART_Transmit... OK:%d\r\n", g_period_ms);
+//    }
+//    else
+//    {
+//    	myPrintf(&huart1," SET PERIOD ERROR\r\n");
+//    	myPrintf(&huart1,"YEU CAU: PERIOD >= 2000 && PERIOD <= 600000\r\n");
+//    }
+//  }
+//  else if (strcmp(line, "SAVE") == 0)
+//  {
+//    // ee_data.magic = CFG_MAGIC;
+//    // ee_data.period_ms = g_period_ms;
+//    // ee_write();
+//    // HAL_UART_Transmit(... "SAVED\r\n")
+//  }
+//  else if (strcmp(line, "LOAD") == 0)
+//  {
+//    // ee_read();
+//    // if (ee_data.magic == CFG_MAGIC) g_period_ms = ee_data.period_ms;
+//    // HAL_UART_Transmit(... "LOADED\r\n")
+//  }
+//  else
+//  {
+//    // HAL_UART_Transmit(... "UNKNOWN\r\n")
+//  }
+   //het 1
+
+
 }
+
+// chung
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART1)
@@ -164,6 +287,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 void Task_1(){
+	myPrintf(&huart1,"thuc hien task 1\r\n");
 	 if (DHT22_Read(&dht22, &dht_data) == 0)   // 0 = OK
 		         {
 		 myPrintf(&huart1,"DHT22 read success\r\n");
@@ -176,33 +300,40 @@ void Task_1(){
 }
 
 void Task_2(){
-	myPrintf(&huart1,"thuc hien task do do am dat\r\n");
+	myPrintf(&huart1,"thuc hien task 2\r\n");
 	soil = Soil_ReadRaw(&soil_cfg);
 }
 
 void Task_3(){
+	myPrintf(&huart1,"thuc hien task 3\r\n");
 	 myPrintf(&huart1,"Temp: %.2f C, Soil: %.2f %%\r\n",
 			                    dht_data.Temperature,
 			                    soil);
 }
 
 void Task_4(){
-	char temp_4[20];
-	char soil_4[20];
-	sprintf(temp_4, "Temp: %.2f C", dht_data.Temperature);
-	sprintf(soil_4, "Soil: %.2f %%", soil);
+	myPrintf(&huart1,"thuc hien task 4\r\n");
+	char temp_soil[20];
+	char period[20];
+	sprintf(temp_soil, "T:%.2fC|S:%.1f%%", dht_data.Temperature, soil);
+	//donnhiemso1
+	//sprintf(period, "P=%.2f (s)",( g_period_ms/1000.0f));
+	//donnhiemso2
+	sprintf(period, "%.1f%.1f%.1f%.1f%.1f", (t1/1000.0f),(t2/1000.0f), (t3/1000.0f), (t4/1000.0f), (t5/1000.0f));
+
 	lcd_put_cur(0,0);
 	lcd_send_string("                "); // 16 spaces
 	lcd_put_cur(0,0);
-	lcd_send_string(temp_4);
+	lcd_send_string(temp_soil);
 
 	lcd_put_cur(1,0);
 	lcd_send_string("                ");
 	lcd_put_cur(1,0);
-	lcd_send_string(soil_4);
+	lcd_send_string(period);
 }
 
 void Task_5(){
+	myPrintf(&huart1,"thuc hien task 5\r\n");
 	if (uart_line_ready)
 	  {
 		myPrintf(&huart1,"vao task DA NHAN DC CHUOI\r\n");
@@ -211,7 +342,7 @@ void Task_5(){
 	    uart_line_len = 0;      // reset để nhận dòng mới
 	  }
 }
-
+// het chung
 /* USER CODE END 0 */
 
 /**
@@ -247,8 +378,16 @@ int main(void)
   MX_TIM2_Init();
   MX_I2C1_Init();
   MX_ADC1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim2);
+  // donnhiemso2
+  Q_Init(&q);
+  HAL_TIM_Base_Start_IT(&htim3);
+
+
+
+  //hetdonnhiemso2
   // Gán cấu hình cho DHT22
   dht22.GPIOx = GPIOA;
   dht22.GPIO_Pin = GPIO_PIN_1;
@@ -275,23 +414,40 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    /* USER CODE END WHILE */
 
-//	  if ((uwTick % g_period_ms) == 1000) {
-//		  for (int i = 0; i < 5; i++)
-//		  { sptt_task_point_array[i](); } }"
+    /* USER CODE BEGIN 3 */
+	  // donnhiemso1
+//	  if (HAL_GetTick() - last_run >= g_period_ms)
+//	 	  {
+//	 	      last_run = HAL_GetTick();
+//
+//	 	      for (int i = 0; i < 5; i++)
+//	 	      {
+//	 	          sptt_task_point_array[i]();
+//	 	      }
+//	 	  }
+	  //het1
 
 
-	  if (HAL_GetTick() - last_run >= g_period_ms)
-	  {
-	      last_run = HAL_GetTick();
+	  // donnhiemso2
+	  TaskID task;
 
-	      for (int i = 0; i < 5; i++)
-	      {
-	          sptt_task_point_array[i]();
-	      }
-	  }
+	         if (Q_Pop(&q, &task))
+	         {
+	             switch(task)
+	             {
+	                 case TASK1: Task_1(); break;
+	                 case TASK2: Task_2(); break;
+	                 case TASK3: Task_3(); break;
+	                 case TASK4: Task_4(); break;
+	                 case TASK5: Task_5(); break;
+	                 default: break;
+	             }
+	         }
 
   }
+  // het2
   /* USER CODE END 3 */
 }
 
@@ -468,6 +624,51 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 7199;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 9;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -513,12 +714,23 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1, GPIO_PIN_SET);
+
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;
